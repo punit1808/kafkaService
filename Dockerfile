@@ -1,5 +1,5 @@
 # Dockerfile
-FROM bitnami/kafka:latest
+FROM docker.io/bitnami/kafka:3.7.0
 
 # Expose Kafka ports
 EXPOSE 9092 9093
