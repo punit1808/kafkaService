@@ -1,11 +1,21 @@
-# Dockerfile
-FROM docker.io/bitnami/kafka:3.7.0
+FROM openjdk:17-jdk-slim
 
-# Expose Kafka ports
-EXPOSE 9092 9093
+ENV KAFKA_VERSION=3.7.1
+ENV SCALA_VERSION=2.13
+ENV KAFKA_HOME=/opt/kafka
 
-# Set environment variables for basic Kafka setup
-ENV KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
-ENV ALLOW_PLAINTEXT_LISTENER=yes
-ENV KAFKA_CFG_LISTENERS=PLAINTEXT://:9092
-ENV KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+RUN apt-get update && apt-get install -y wget supervisor && apt-get clean
+RUN wget https://downloads.apache.org/kafka/${KAFKA_VERSION}/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz && \
+    tar -xzf kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz -C /opt && \
+    mv /opt/kafka_${SCALA_VERSION}-${KAFKA_VERSION} ${KAFKA_HOME} && \
+    rm kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz
+
+# Configure broker for external access
+RUN echo "listeners=PLAINTEXT://0.0.0.0:9092" >> /opt/kafka/config/server.properties && \
+    echo "advertised.listeners=PLAINTEXT://0.0.0.0:9092" >> /opt/kafka/config/server.properties
+
+# Use supervisor to manage both Zookeeper and Kafka
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+EXPOSE 2181 9092
+
+CMD ["/usr/bin/supervisord"]
