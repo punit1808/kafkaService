@@ -5,7 +5,7 @@ ENV SCALA_VERSION=2.13
 ENV KAFKA_HOME=/opt/kafka
 
 RUN apt-get update && apt-get install -y wget supervisor && apt-get clean
-RUN wget https://downloads.apache.org/kafka/${KAFKA_VERSION}/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz && \
+RUN wget https://archive.apache.org/dist/kafka/${KAFKA_VERSION}/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz && \
     tar -xzf kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz -C /opt && \
     mv /opt/kafka_${SCALA_VERSION}-${KAFKA_VERSION} ${KAFKA_HOME} && \
     rm kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz
