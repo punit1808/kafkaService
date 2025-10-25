@@ -1,4 +1,4 @@
-FROM bitnami/kafka:latest
+FROM apache/kafka:4.1.0.
 
 # Copy your configs
 COPY server.properties /opt/kafka/config/server.properties
