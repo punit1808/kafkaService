@@ -10,19 +10,19 @@ ENV PATH="$KAFKA_HOME/bin:$PATH"
 # Install dependencies
 RUN apt-get update && apt-get install -y curl bash net-tools dnsutils jq && rm -rf /var/lib/apt/lists/*
 
-# Download and extract Kafka source
+# Download and extract the official *binary* Kafka tarball (not source)
 WORKDIR /tmp
-RUN curl -O https://dlcdn.apache.org/kafka/${KAFKA_VERSION}/kafka-${KAFKA_VERSION}-src.tgz && \
-    tar -xzf kafka-${KAFKA_VERSION}-src.tgz && \
-    mv kafka-${KAFKA_VERSION}-src $KAFKA_HOME && \
-    rm kafka-${KAFKA_VERSION}-src.tgz
+RUN curl -O https://downloads.apache.org/kafka/${KAFKA_VERSION}/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz && \
+    tar -xzf kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz && \
+    mv kafka_${SCALA_VERSION}-${KAFKA_VERSION} $KAFKA_HOME && \
+    rm kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz
 
 WORKDIR $KAFKA_HOME
 
-# Kafka listens on port 9092
+# Expose Kafka broker port
 EXPOSE 9092
 
-# Create a startup script
+# Create startup script
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
@@ -31,7 +31,6 @@ $KAFKA_HOME/bin/zookeeper-server-start.sh $KAFKA_HOME/config/zookeeper.propertie
 sleep 5\n\
 \n\
 echo "Starting Kafka Broker..."\n\
-# Update advertised.listeners dynamically for Render public URL if set\n\
 if [ -n "$RENDER_EXTERNAL_URL" ]; then\n\
   HOST=$(echo $RENDER_EXTERNAL_URL | sed "s~http[s]*://~~g")\n\
   sed -i "s|#listeners=PLAINTEXT://:9092|listeners=PLAINTEXT://0.0.0.0:9092|g" $KAFKA_HOME/config/server.properties\n\
