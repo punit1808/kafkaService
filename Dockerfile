@@ -21,10 +21,16 @@ WORKDIR $KAFKA_HOME
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
+echo "Preparing Kafka config..."\n\
+mkdir -p $KAFKA_HOME/config/kraft\n\
+cp $KAFKA_HOME/config/server.properties $KAFKA_HOME/config/kraft/server.properties\n\
+\n\
 echo "Initializing Kafka storage (if needed)..."\n\
 if [ ! -f "$KAFKA_HOME/data/meta.properties" ]; then\n\
   mkdir -p $KAFKA_HOME/data\n\
-  $KAFKA_HOME/bin/kafka-storage.sh format --ignore-formatted --cluster-id=$($KAFKA_HOME/bin/kafka-storage.sh random-uuid) --config $KAFKA_HOME/config/kraft/server.properties\n\
+  $KAFKA_HOME/bin/kafka-storage.sh format --ignore-formatted \\\n\
+    --cluster-id=$($KAFKA_HOME/bin/kafka-storage.sh random-uuid) \\\n\
+    --config $KAFKA_HOME/config/kraft/server.properties\n\
 fi\n\
 \n\
 echo "Starting Kafka (KRaft mode)..."\n\
