@@ -1,63 +1,57 @@
-FROM openjdk:17-jdk-slim
+# Use official JDK base
+FROM openjdk:17-slim
 
+# Install dependencies
+RUN apt-get update && apt-get install -y curl tar bash && rm -rf /var/lib/apt/lists/*
+
+# Set Kafka version and home
 ENV KAFKA_VERSION=4.1.0
 ENV SCALA_VERSION=2.13
 ENV KAFKA_HOME=/opt/kafka
-ENV PATH="$KAFKA_HOME/bin:$PATH"
-
-# Limit JVM memory to avoid OOM on Render
-ENV KAFKA_HEAP_OPTS="-Xmx512M -Xms256M"
-
-# Install dependencies
-RUN apt-get update && apt-get install -y curl dnsutils && rm -rf /var/lib/apt/lists/*
-
-# Download and extract Kafka
-WORKDIR /tmp
-RUN curl -O https://dlcdn.apache.org/kafka/${KAFKA_VERSION}/kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz && \
-    tar -xzf kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz && \
-    mv kafka_${SCALA_VERSION}-${KAFKA_VERSION} ${KAFKA_HOME} && \
-    rm kafka_${SCALA_VERSION}-${KAFKA_VERSION}.tgz
-
 WORKDIR $KAFKA_HOME
 
-# Create Kafka startup script for KRaft mode (Render-compatible)
-RUN echo '#!/bin/bash\n\
-set -e\n\
-\n\
-echo "Preparing Kafka configuration..."\n\
-mkdir -p $KAFKA_HOME/config/kraft\n\
-\n\
-# Base KRaft config\n\
-cat <<EOT > $KAFKA_HOME/config/kraft/server.properties\n\
-process.roles=broker,controller\n\
-node.id=1\n\
-controller.listener.names=CONTROLLER\n\
-listeners=PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093\n\
-listener.security.protocol.map=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT\n\
-log.dirs=$KAFKA_HOME/data\n\
-num.partitions=1\n\
-offsets.topic.replication.factor=1\n\
-transaction.state.log.replication.factor=1\n\
-transaction.state.log.min.isr=1\n\
-auto.create.topics.enable=true\n\
-controller.quorum.voters=1@kafkaservice-vop4.onrender.com:9093\n\
-advertised.listeners=PLAINTEXT://kafkaservice-vop4.onrender.com:9092\n\
-EOT\n\
-\n\
-echo "Formatting storage if needed..."\n\
-if [ ! -f "$KAFKA_HOME/data/meta.properties" ]; then\n\
-  mkdir -p $KAFKA_HOME/data\n\
-  $KAFKA_HOME/bin/kafka-storage.sh format --ignore-formatted --standalone \\\n\
-    --cluster-id=$($KAFKA_HOME/bin/kafka-storage.sh random-uuid) \\\n\
-    --config $KAFKA_HOME/config/kraft/server.properties\n\
-fi\n\
-\n\
-echo "Starting Kafka..."\n\
-exec $KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/kraft/server.properties\n' > /usr/local/bin/start-kafka.sh && \
-    chmod +x /usr/local/bin/start-kafka.sh
+# Download Kafka
+RUN curl -fsSL https://dlcdn.apache.org/kafka/${KAFKA_VERSION}/kafka-${SCALA_VERSION}-${KAFKA_VERSION}-src.tgz -o kafka.tgz && \
+    tar -xzf kafka.tgz --strip 1 && \
+    rm kafka.tgz
 
 # Expose Kafka port
 EXPOSE 9092
 
-# Start Kafka when container launches
-CMD ["/usr/local/bin/start-kafka.sh"]
+# Set Render public hostname dynamically
+ENV KAFKA_ADVERTISED_LISTENER=PLAINTEXT://0.0.0.0:9092
+
+# Startup script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+echo "Starting Kafka in KRaft mode..."\n\
+\n\
+# Set node ID\n\
+export KAFKA_NODE_ID=${HOSTNAME:-1}\n\
+\n\
+# Prepare directories\n\
+mkdir -p /tmp/kraft-combined-logs\n\
+\n\
+# Format storage if not already formatted\n\
+if [ ! -f /tmp/kraft-combined-logs/meta.properties ]; then\n\
+  echo "Formatting KRaft storage..."\n\
+  $KAFKA_HOME/bin/kafka-storage.sh format --ignore-formatted --config $KAFKA_HOME/config/kraft/server.properties --cluster-id=$(uuidgen)\n\
+fi\n\
+\n\
+# Modify config dynamically\n\
+sed -i \"s|^#listeners=.*|listeners=PLAINTEXT://0.0.0.0:9092|\" $KAFKA_HOME/config/kraft/server.properties\n\
+sed -i \"s|^#advertised.listeners=.*|advertised.listeners=PLAINTEXT://${RENDER_EXTERNAL_HOSTNAME:-localhost}:9092|\" $KAFKA_HOME/config/kraft/server.properties\n\
+sed -i \"s|^#process.roles=.*|process.roles=broker,controller|\" $KAFKA_HOME/config/kraft/server.properties\n\
+sed -i \"s|^#controller.listener.names=.*|controller.listener.names=CONTROLLER|\" $KAFKA_HOME/config/kraft/server.properties\n\
+sed -i \"s|^#listener.security.protocol.map=.*|listener.security.protocol.map=PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT|\" $KAFKA_HOME/config/kraft/server.properties\n\
+sed -i \"s|^#controller.quorum.voters=.*|controller.quorum.voters=1@localhost:9093|\" $KAFKA_HOME/config/kraft/server.properties\n\
+sed -i \"s|^#log.dirs=.*|log.dirs=/tmp/kraft-combined-logs|\" $KAFKA_HOME/config/kraft/server.properties\n\
+echo "socket.request.max.bytes=524288000" >> $KAFKA_HOME/config/kraft/server.properties\n\
+\n\
+# Start Kafka\n\
+exec $KAFKA_HOME/bin/kafka-server-start.sh $KAFKA_HOME/config/kraft/server.properties\n' > /start-kafka.sh
+
+RUN chmod +x /start-kafka.sh
+
+CMD ["/start-kafka.sh"]
